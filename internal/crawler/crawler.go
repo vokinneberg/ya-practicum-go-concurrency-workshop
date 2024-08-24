@@ -2,6 +2,7 @@ package crawler
 
 import (
 	"fmt"
+	"sync"
 )
 
 type Crawler struct {
@@ -20,11 +21,16 @@ func (c *Crawler) AddFeed(feed string) {
 
 // Start starts the crawler
 func (c *Crawler) Start() {
+	// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
+	wg := sync.WaitGroup{}
 	for _, feed := range c.feeds {
+		wg.Add(1)
 		// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
-		// Почему програма ничего не печатает?
 		go func(f string) {
+			defer wg.Done()
 			fmt.Printf("Crawling %s\n", f)
 		}(feed)
 	}
+	// Ждем завершения всех горутин.
+	wg.Wait()
 }
