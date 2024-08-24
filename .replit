@@ -1,0 +1,15 @@
+entrypoint = "main.go"
+run = ["go", "run", "."]
+
+modules = ["go-1.21"]
+
+[nix]
+channel = "stable-24_05"
+
+[gitHubImport]
+requiredFiles = [".replit"]
+
+[deployment]
+run = ["go", "run", "."]
+ignorePorts = false
+deploymentTarget = "gce"
