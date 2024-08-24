@@ -2,20 +2,24 @@ package crawler
 
 import (
 	"fmt"
+	"log"
 	"sync"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/mmcdole/gofeed"
 )
 
 type Crawler struct {
 	httpClient *resty.Client
+	feedParser *gofeed.Parser
 	feeds      []string
 }
 
 // NewCrawler creates a new Crawler
-func New(httpClient *resty.Client) *Crawler {
+func New(httpClient *resty.Client, feedParser *gofeed.Parser) *Crawler {
 	return &Crawler{
 		httpClient: httpClient,
+		feedParser: feedParser,
 	}
 }
 
@@ -34,9 +38,13 @@ func (c *Crawler) Start() {
 		go func(f string) {
 			defer wg.Done()
 			if rssData, err := c.fetchFeedData(f); err != nil {
-				fmt.Printf("failed to fetch feed: %v\n", err)
+				log.Printf("failed to fetch feed data: %v", err)
 			} else {
-				fmt.Printf("fetched feed: %s\n", rssData)
+				feed, err := c.feedParser.ParseString(rssData)
+				if err != nil {
+					log.Printf("failed to parse feed data: %v", err)
+				}
+				fmt.Printf("fetched feed: %s\n", feed.Title)
 			}
 		}(feed)
 	}

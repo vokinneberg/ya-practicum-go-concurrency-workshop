@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/go-resty/resty/v2"
+	"github.com/mmcdole/gofeed"
 
 	"main/internal/crawler"
 )
@@ -21,8 +22,11 @@ func main() {
 	httpClient := resty.New()
 	httpClient.SetTimeout(time.Duration(5 * time.Second))
 
+	// Create a new gofeed parser
+	fp := gofeed.NewParser()
+
 	// Create a new Crawler
-	c := crawler.New(httpClient)
+	c := crawler.New(httpClient, fp)
 
 	// Add RSS feeds to the crawler
 	for _, rssFeed := range rssFeedList {
