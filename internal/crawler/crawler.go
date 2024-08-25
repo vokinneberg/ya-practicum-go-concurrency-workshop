@@ -3,7 +3,7 @@ package crawler
 import (
 	"fmt"
 	"log"
-	"sync"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
@@ -30,28 +30,36 @@ func (c *Crawler) AddFeed(feed string) {
 
 // Start starts the crawler
 func (c *Crawler) Start() {
-	// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
-	wg := sync.WaitGroup{}
-	for _, feed := range c.feeds {
-		wg.Add(1)
-		// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
-		go func(f string) {
-			defer wg.Done()
-			if rssData, err := c.fetchFeedData(f); err != nil {
-				log.Printf("failed to fetch feed data: %v", err)
-			} else {
-				// Парсим данные RSS.
-				feed, err := c.feedParser.ParseString(rssData)
-				if err != nil {
-					log.Printf("failed to parse feed data: %v", err)
+	go func() {
+		// Звпускаем краулер, который будет получать данные RSS-ленты периодически.
+		t := time.NewTicker(30 * time.Second)
+		defer t.Stop()
+		for {
+			select {
+			//  time.Ticker.C возвращает канал, который будет отправлять событие каждый раз, когда таймер истекает.
+			case <-t.C:
+				// Запускаем горутины для каждой RSS-ленты.
+				// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
+				log.Println("fetching feeds...")
+				for _, feed := range c.feeds {
+					// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
+					go func(f string) {
+						if rssData, err := c.fetchFeedData(f); err != nil {
+							log.Printf("failed to fetch feed data: %v", err)
+						} else {
+							// Парсим данные RSS.
+							feed, err := c.feedParser.ParseString(rssData)
+							if err != nil {
+								log.Printf("failed to parse feed data: %v", err)
+							}
+							// Печатаем заголовок.
+							log.Printf("fetched feed: %s\n", feed.Title)
+						}
+					}(feed)
 				}
-				// Печатаем заголовок.
-				fmt.Printf("fetched feed: %s\n", feed.Title)
 			}
-		}(feed)
-	}
-	// Ждем завершения всех горутин.
-	wg.Wait()
+		}
+	}()
 }
 
 func (c *Crawler) fetchFeedData(feed string) (string, error) {
