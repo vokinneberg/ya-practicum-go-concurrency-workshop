@@ -30,36 +30,34 @@ func (c *Crawler) AddFeed(feed string) {
 
 // Start starts the crawler
 func (c *Crawler) Start() {
-	go func() {
-		// Звпускаем краулер, который будет получать данные RSS-ленты периодически.
-		t := time.NewTicker(30 * time.Second)
-		defer t.Stop()
-		for {
-			select {
-			//  time.Ticker.C возвращает канал, который будет отправлять событие каждый раз, когда таймер истекает.
-			case <-t.C:
-				// Запускаем горутины для каждой RSS-ленты.
-				// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
-				log.Println("fetching feeds...")
-				for _, feed := range c.feeds {
-					// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
-					go func(f string) {
-						if rssData, err := c.fetchFeedData(f); err != nil {
-							log.Printf("failed to fetch feed data: %v", err)
-						} else {
-							// Парсим данные RSS.
-							feed, err := c.feedParser.ParseString(rssData)
-							if err != nil {
-								log.Printf("failed to parse feed data: %v", err)
-							}
-							// Печатаем заголовок.
-							log.Printf("fetched feed: %s\n", feed.Title)
+	// Звпускаем краулер, который будет получать данные RSS-ленты периодически.
+	t := time.NewTicker(30 * time.Second)
+	defer t.Stop()
+	for {
+		select {
+		//  time.Ticker.C возвращает канал, который будет отправлять событие каждый раз, когда таймер истекает.
+		case <-t.C:
+			// Запускаем горутины для каждой RSS-ленты.
+			// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
+			log.Println("fetching feeds...")
+			for _, feed := range c.feeds {
+				// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
+				go func(f string) {
+					if rssData, err := c.fetchFeedData(f); err != nil {
+						log.Printf("failed to fetch feed data: %v", err)
+					} else {
+						// Парсим данные RSS.
+						feed, err := c.feedParser.ParseString(rssData)
+						if err != nil {
+							log.Printf("failed to parse feed data: %v", err)
 						}
-					}(feed)
-				}
+						// Печатаем заголовок.
+						log.Printf("fetched feed: %s\n", feed.Title)
+					}
+				}(feed)
 			}
 		}
-	}()
+	}
 }
 
 func (c *Crawler) fetchFeedData(feed string) (string, error) {

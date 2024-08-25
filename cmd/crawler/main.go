@@ -1,7 +1,9 @@
 package main
 
 import (
+	"log"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/go-resty/resty/v2"
@@ -35,14 +37,23 @@ func main() {
 		c.AddFeed(rssFeed)
 	}
 
+	wg := sync.WaitGroup{}
+	wg.Add(2)
 	// Start the crawler
-	c.Start()
+	go func() {
+		defer wg.Done()
+		c.Start()
+	}()
 
-	// Start web server
+	// Set up and start web server
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /rss", handler.RSSFeed())
+	go func() {
+		defer wg.Done()
+		if err := http.ListenAndServe(":8080", mux); err != nil {
+			log.Panic(err)
+		}
+	}()
 
-	if err := http.ListenAndServe(":8080", mux); err != nil {
-		panic(err)
-	}
+	wg.Wait()
 }
