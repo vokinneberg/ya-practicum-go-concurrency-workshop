@@ -5,6 +5,8 @@ import (
 	"log"
 	"time"
 
+	"main/internal/feed"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
 )
@@ -12,26 +14,22 @@ import (
 type Crawler struct {
 	httpClient *resty.Client
 	feedParser *gofeed.Parser
-	feeds      []string
+	feeds      *feed.Storage
 }
 
 // NewCrawler creates a new Crawler
-func New(httpClient *resty.Client, feedParser *gofeed.Parser) *Crawler {
+func New(feeds *feed.Storage, httpClient *resty.Client, feedParser *gofeed.Parser) *Crawler {
 	return &Crawler{
+		feeds:      feeds,
 		httpClient: httpClient,
 		feedParser: feedParser,
 	}
 }
 
-// AddFeed adds a new RSS feed to the crawler
-func (c *Crawler) AddFeed(feed string) {
-	c.feeds = append(c.feeds, feed)
-}
-
 // Start starts the crawler
 func (c *Crawler) Start() {
 	// Звпускаем краулер, который будет получать данные RSS-ленты периодически.
-	t := time.NewTicker(30 * time.Second)
+	t := time.NewTicker(10 * time.Second)
 	defer t.Stop()
 	for {
 		select {
@@ -40,10 +38,12 @@ func (c *Crawler) Start() {
 			// Запускаем горутины для каждой RSS-ленты.
 			// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
 			log.Println("fetching feeds...")
-			for _, feed := range c.feeds {
+			// Получаем все RSS-ленты.
+			links := c.feeds.GetLinks()
+			for _, link := range links {
 				// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
-				go func(f string) {
-					if rssData, err := c.fetchFeedData(f); err != nil {
+				go func(l string) {
+					if rssData, err := c.fetchFeedData(l); err != nil {
 						log.Printf("failed to fetch feed data: %v", err)
 					} else {
 						// Парсим данные RSS.
@@ -53,8 +53,9 @@ func (c *Crawler) Start() {
 						}
 						// Печатаем заголовок.
 						log.Printf("fetched feed: %s\n", feed.Title)
+						c.feeds.SetFeed(l, mapFeed(feed))
 					}
-				}(feed)
+				}(link)
 			}
 		}
 	}
@@ -72,4 +73,45 @@ func (c *Crawler) fetchFeedData(feed string) (string, error) {
 	}
 
 	return string(resp.Body()), nil
+}
+
+func mapFeed(fetchedData *gofeed.Feed) []feed.Item {
+	if fetchedData == nil {
+		return nil
+	}
+
+	mapItem := func(fetchedItem *gofeed.Item) *feed.Item {
+		item := &feed.Item{
+			Title:       fetchedItem.Title,
+			Description: fetchedItem.Description,
+			Link:        fetchedItem.Link,
+			Published:   fetchedItem.Published,
+			Source: &feed.Source{
+				Title: fetchedData.Title,
+				Link:  fetchedData.Link,
+			},
+		}
+
+		if fetchedItem.Author != nil {
+			item.Author = &feed.Author{
+				Name: fetchedItem.Author.Name,
+			}
+		}
+
+		if fetchedItem.Image != nil {
+			item.Image = &feed.Image{
+				Title: fetchedItem.Image.Title,
+				Link:  fetchedItem.Image.URL,
+			}
+		}
+
+		return item
+	}
+
+	items := make([]feed.Item, 0, len(fetchedData.Items))
+	for _, fetchedItem := range fetchedData.Items {
+		mappedItem := mapItem(fetchedItem)
+		items = append(items, *mappedItem)
+	}
+	return items
 }

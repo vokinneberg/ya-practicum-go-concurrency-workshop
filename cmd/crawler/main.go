@@ -6,11 +6,12 @@ import (
 	"sync"
 	"time"
 
+	"main/internal/crawler"
+	"main/internal/feed"
+	"main/internal/http/handler"
+
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
-
-	"main/internal/crawler"
-	"main/internal/http/handler"
 )
 
 var rssFeedList = []string{
@@ -22,20 +23,18 @@ var rssFeedList = []string{
 }
 
 func main() {
+	// Create feed storage
+	fs := feed.NewFeedStorage(rssFeedList)
+
 	// Create a new resty http client
-	httpClient := resty.New()
-	httpClient.SetTimeout(time.Duration(5 * time.Second))
+	hc := resty.New()
+	hc.SetTimeout(time.Duration(5 * time.Second))
 
 	// Create a new gofeed parser
 	fp := gofeed.NewParser()
 
 	// Create a new Crawler
-	c := crawler.New(httpClient, fp)
-
-	// Add RSS feeds to the crawler
-	for _, rssFeed := range rssFeedList {
-		c.AddFeed(rssFeed)
-	}
+	c := crawler.New(fs, hc, fp)
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
@@ -47,7 +46,7 @@ func main() {
 
 	// Set up and start web server
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /rss", handler.RSSFeed())
+	mux.HandleFunc("GET /rss", handler.RSSFeed(fs))
 	go func() {
 		defer wg.Done()
 		if err := http.ListenAndServe(":8080", mux); err != nil {
