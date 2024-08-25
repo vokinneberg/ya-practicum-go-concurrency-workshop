@@ -1,6 +1,7 @@
 package crawler
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
+	"golang.org/x/sync/errgroup"
 )
 
 type rss struct {
@@ -32,50 +34,75 @@ func New(feeds *feed.Storage, httpClient *resty.Client, feedParser *gofeed.Parse
 }
 
 // Запускает краулер
-func (c *Crawler) Start(numWorkers int, numConsumers int) {
+func (c *Crawler) Start(ctx context.Context, numWorkers int, numConsumers int) error {
+	// Создаем каналы для передачи данных между горутинами
+	// jobs - канал для передачи URL RSS-лент между горутинами
+	// results - канал для передачи данных RSS-лент между горутинами
 	jobs := make(chan string, numWorkers)
 	results := make(chan *rss, numWorkers)
-	done := make(chan struct{}, numConsumers)
 
-	// Start worker pool
+	g := new(errgroup.Group)
+	// Запускаем пул воркеров
 	for i := 0; i < numWorkers; i++ {
-		go c.worker(jobs, results)
+		g.Go(func() error {
+			if err := c.worker(ctx, jobs, results); err != nil {
+				return fmt.Errorf("failed to run worker: %w", err)
+			}
+			return nil
+		})
 	}
 
-	// Start consumer pool
+	// Запускаем пул консьюмеров
 	for i := 0; i < numConsumers; i++ {
-		go c.consumer(results, done)
+		g.Go(func() error {
+			if err := c.consumer(ctx, results); err != nil {
+				return fmt.Errorf("failed to run consumer: %w", err)
+			}
+			return nil
+		})
 	}
 
-	// Start job producer
-	go c.producer(jobs)
+	// Запускаем продюсера
+	g.Go(func() error {
+		if err := c.producer(ctx, jobs); err != nil {
+			return fmt.Errorf("failed to run producer: %w", err)
+		}
+		return nil
+	})
 
-	// Wait for all consumers to finish
-	for i := 0; i < numConsumers; i++ {
-		<-done
+	// Ожидаем завершения всех горутин и возвращаем ошибку, если таковая возникла
+	return g.Wait()
+}
+
+func (c *Crawler) worker(ctx context.Context, jobs <-chan string, results chan<- *rss) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled %w", ctx.Err())
+		case link, ok := <-jobs:
+			if !ok {
+				return nil
+			}
+			rssData, err := c.fetchFeedData(link)
+			if err != nil {
+				return fmt.Errorf("failed to fetch feed data: %w", err)
+			}
+			results <- &rss{
+				link: link,
+				data: rssData,
+			}
+		}
 	}
 }
 
-func (c *Crawler) worker(jobs <-chan string, results chan<- *rss) {
-	for link := range jobs {
-		rssData, err := c.fetchFeedData(link)
-		if err != nil {
-			log.Printf("failed to fetch feed data: %v", err)
-			continue
-		}
-		results <- &rss{
-			link: link,
-			data: rssData,
-		}
-	}
-}
-
-func (c *Crawler) producer(jobs chan<- string) {
+func (c *Crawler) producer(ctx context.Context, jobs chan<- string) error {
 	ticker := time.NewTicker(5 * time.Second)
 	defer ticker.Stop()
 
 	for {
 		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled %w", ctx.Err())
 		case <-ticker.C:
 			links := c.feeds.GetLinks()
 			for _, link := range links {
@@ -85,21 +112,28 @@ func (c *Crawler) producer(jobs chan<- string) {
 	}
 }
 
-func (c *Crawler) consumer(results <-chan *rss, done chan<- struct{}) {
-	for rss := range results {
-		if rss == nil {
-			continue
+func (c *Crawler) consumer(ctx context.Context, results <-chan *rss) error {
+	for {
+		select {
+		case <-ctx.Done():
+			return fmt.Errorf("context cancelled %w", ctx.Err())
+		case rss, ok := <-results:
+			if !ok {
+				return nil
+			}
+			if rss == nil {
+				log.Printf("received nil rss data")
+				continue
+			}
+			feed, err := c.feedParser.ParseString(rss.data)
+			if err != nil {
+				log.Printf("failed to parse feed data: %v", err)
+				return fmt.Errorf("failed to parse feed data: %w", err)
+			}
+			log.Printf("fetched feed: %s\n", feed.Title)
+			c.feeds.SetFeed(rss.link, mapFeed(feed))
 		}
-
-		feed, err := c.feedParser.ParseString(rss.data)
-		if err != nil {
-			log.Printf("failed to parse feed data: %v", err)
-			continue
-		}
-		log.Printf("fetched feed: %s\n", feed.Title)
-		c.feeds.SetFeed(rss.link, mapFeed(feed))
 	}
-	done <- struct{}{}
 }
 
 func (c *Crawler) fetchFeedData(feed string) (string, error) {

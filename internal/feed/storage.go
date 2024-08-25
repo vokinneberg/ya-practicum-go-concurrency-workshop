@@ -2,7 +2,9 @@ package feed
 
 import (
 	"fmt"
+	"sort"
 	"sync"
+	"time"
 )
 
 // ErrFeedNotFound возвращается, когда RSS-лента не найдена.
@@ -76,5 +78,10 @@ func (fs *Storage) GetFeeds() []Item {
 			result = append(result, feed...)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		timeI, _ := time.Parse(time.RFC3339, result[i].Published)
+		timeJ, _ := time.Parse(time.RFC3339, result[j].Published)
+		return timeI.After(timeJ)
+	})
 	return result
 }
