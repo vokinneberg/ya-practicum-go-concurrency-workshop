@@ -31,21 +31,29 @@ func New(feeds *feed.Storage, httpClient *resty.Client, feedParser *gofeed.Parse
 	}
 }
 
-// Start starts the crawler
-func (c *Crawler) Start(numWorkers int) {
+// Запускает краулер
+func (c *Crawler) Start(numWorkers int, numConsumers int) {
 	jobs := make(chan string)
 	results := make(chan *rss)
+	done := make(chan struct{})
 
-	// Start worker pool
+	// Запускаем пул воркеров
 	for i := 0; i < numWorkers; i++ {
 		go c.worker(jobs, results)
+	}
+
+	// Запускаем пул консьюмеров
+	for i := 0; i < numConsumers; i++ {
+		go c.consumer(results, done)
 	}
 
 	// Start job producer
 	go c.producer(jobs)
 
-	// Process results
-	c.consumer(results)
+	// Wait for all consumers to finish
+	for i := 0; i < numConsumers; i++ {
+		<-done
+	}
 }
 
 func (c *Crawler) worker(jobs <-chan string, results chan<- *rss) {
@@ -77,7 +85,7 @@ func (c *Crawler) producer(jobs chan<- string) {
 	}
 }
 
-func (c *Crawler) consumer(results <-chan *rss) {
+func (c *Crawler) consumer(results <-chan *rss, done chan<- struct{}) {
 	for rss := range results {
 		if rss == nil {
 			continue
@@ -91,6 +99,7 @@ func (c *Crawler) consumer(results <-chan *rss) {
 		log.Printf("fetched feed: %s\n", feed.Title)
 		c.feeds.SetFeed(rss.link, mapFeed(feed))
 	}
+	done <- struct{}{}
 }
 
 func (c *Crawler) fetchFeedData(feed string) (string, error) {

@@ -41,7 +41,7 @@ func main() {
 	// Start the crawler
 	go func() {
 		defer wg.Done()
-		c.Start(5)
+		c.Start(5, 3)
 	}()
 
 	// Set up and start web server
