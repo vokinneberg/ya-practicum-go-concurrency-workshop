@@ -40,10 +40,12 @@ func (c *Crawler) Start() {
 			if rssData, err := c.fetchFeedData(f); err != nil {
 				log.Printf("failed to fetch feed data: %v", err)
 			} else {
+				// Парсим данные RSS.
 				feed, err := c.feedParser.ParseString(rssData)
 				if err != nil {
 					log.Printf("failed to parse feed data: %v", err)
 				}
+				// Печатаем заголовок.
 				fmt.Printf("fetched feed: %s\n", feed.Title)
 			}
 		}(feed)

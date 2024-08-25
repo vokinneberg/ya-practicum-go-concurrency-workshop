@@ -1,12 +1,14 @@
 package main
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
 
 	"main/internal/crawler"
+	"main/internal/http/handler"
 )
 
 var rssFeedList = []string{
@@ -35,4 +37,12 @@ func main() {
 
 	// Start the crawler
 	c.Start()
+
+	// Start web server
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /rss", handler.RSSFeed())
+
+	if err := http.ListenAndServe(":8080", mux); err != nil {
+		panic(err)
+	}
 }
