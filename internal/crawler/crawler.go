@@ -11,6 +11,11 @@ import (
 	"github.com/mmcdole/gofeed"
 )
 
+type rss struct {
+	link string
+	data string
+}
+
 type Crawler struct {
 	httpClient *resty.Client
 	feedParser *gofeed.Parser
@@ -27,37 +32,64 @@ func New(feeds *feed.Storage, httpClient *resty.Client, feedParser *gofeed.Parse
 }
 
 // Start starts the crawler
-func (c *Crawler) Start() {
-	// Звпускаем краулер, который будет получать данные RSS-ленты периодически.
-	t := time.NewTicker(5 * time.Second)
-	defer t.Stop()
+func (c *Crawler) Start(numWorkers int) {
+	jobs := make(chan string)
+	results := make(chan *rss)
+
+	// Start worker pool
+	for i := 0; i < numWorkers; i++ {
+		go c.worker(jobs, results)
+	}
+
+	// Start job producer
+	go c.producer(jobs)
+
+	// Process results
+	c.consumer(results)
+}
+
+func (c *Crawler) worker(jobs <-chan string, results chan<- *rss) {
+	for link := range jobs {
+		rssData, err := c.fetchFeedData(link)
+		if err != nil {
+			log.Printf("failed to fetch feed data: %v", err)
+			continue
+		}
+		results <- &rss{
+			link: link,
+			data: rssData,
+		}
+	}
+}
+
+func (c *Crawler) producer(jobs chan<- string) {
+	ticker := time.NewTicker(5 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		//  time.Ticker.C возвращает канал, который будет отправлять событие каждый раз, когда таймер истекает.
-		case <-t.C:
-			// Запускаем горутины для каждой RSS-ленты.
-			// Создаем WaitGroup, чтобы дождаться завершения всех горутин.
-			log.Println("fetching feeds...")
-			// Получаем все RSS-ленты.
+		case <-ticker.C:
 			links := c.feeds.GetLinks()
 			for _, link := range links {
-				// Здесь мы используем анонимную функцию, чтобы передать feed внутрь неё и напечатать его.
-				go func(l string) {
-					if rssData, err := c.fetchFeedData(l); err != nil {
-						log.Printf("failed to fetch feed data: %v", err)
-					} else {
-						// Парсим данные RSS.
-						feed, err := c.feedParser.ParseString(rssData)
-						if err != nil {
-							log.Printf("failed to parse feed data: %v", err)
-						}
-						// Печатаем заголовок.
-						log.Printf("fetched feed: %s\n", feed.Title)
-						c.feeds.SetFeed(l, mapFeed(feed))
-					}
-				}(link)
+				jobs <- link
 			}
 		}
+	}
+}
+
+func (c *Crawler) consumer(results <-chan *rss) {
+	for rss := range results {
+		if rss == nil {
+			continue
+		}
+
+		feed, err := c.feedParser.ParseString(rss.data)
+		if err != nil {
+			log.Printf("failed to parse feed data: %v", err)
+			continue
+		}
+		log.Printf("fetched feed: %s\n", feed.Title)
+		c.feeds.SetFeed(rss.link, mapFeed(feed))
 	}
 }
 
