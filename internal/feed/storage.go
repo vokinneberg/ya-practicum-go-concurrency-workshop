@@ -2,6 +2,7 @@ package feed
 
 import (
 	"fmt"
+	"sync"
 )
 
 // ErrFeedNotFound возвращается, когда RSS-лента не найдена.
@@ -18,6 +19,9 @@ func (e ErrFeedNotFound) Error() string {
 type Storage struct {
 	// Здесь мы будем хранить данные RSS-ленты.
 	feeds map[string][]Item
+
+	// Мьютекс для безопасного доступа к данным RSS-лент.
+	m sync.Mutex
 }
 
 // NewFeedStorage создает новое хранилище RSS-лент.
@@ -34,11 +38,15 @@ func NewFeedStorage(feeds []string) *Storage {
 
 // SetFeed устанавливает данные RSS-ленты по URL.
 func (fs *Storage) SetFeed(url string, feed []Item) {
+	fs.m.Lock()
+	defer fs.m.Unlock()
 	fs.feeds[url] = feed
 }
 
 // GetFeedLinks возвращает список URL RSS-лент.
 func (fs *Storage) GetLinks() []string {
+	fs.m.Lock()
+	defer fs.m.Unlock()
 	links := make([]string, 0, len(fs.feeds))
 	for link := range fs.feeds {
 		links = append(links, link)
@@ -48,6 +56,8 @@ func (fs *Storage) GetLinks() []string {
 
 // GetFeed возвращает данные RSS-ленты по URL.
 func (fs *Storage) GetFeed(url string) ([]Item, error) {
+	fs.m.Lock()
+	defer fs.m.Unlock()
 	if _, ok := fs.feeds[url]; !ok {
 		return nil, ErrFeedNotFound{URL: url}
 	}
@@ -56,6 +66,8 @@ func (fs *Storage) GetFeed(url string) ([]Item, error) {
 
 // GetFeeds возвращает данные всех RSS-лент.
 func (fs *Storage) GetFeeds() []Item {
+	fs.m.Lock()
+	defer fs.m.Unlock()
 	result := make([]Item, 0, len(fs.feeds))
 	for _, feed := range fs.feeds {
 		if feed != nil {

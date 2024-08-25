@@ -29,7 +29,7 @@ func New(feeds *feed.Storage, httpClient *resty.Client, feedParser *gofeed.Parse
 // Start starts the crawler
 func (c *Crawler) Start() {
 	// Звпускаем краулер, который будет получать данные RSS-ленты периодически.
-	t := time.NewTicker(10 * time.Second)
+	t := time.NewTicker(5 * time.Second)
 	defer t.Stop()
 	for {
 		select {
