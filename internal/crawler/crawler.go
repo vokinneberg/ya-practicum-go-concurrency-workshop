@@ -33,16 +33,16 @@ func New(feeds *feed.Storage, httpClient *resty.Client, feedParser *gofeed.Parse
 
 // Запускает краулер
 func (c *Crawler) Start(numWorkers int, numConsumers int) {
-	jobs := make(chan string)
-	results := make(chan *rss)
-	done := make(chan struct{})
+	jobs := make(chan string, numWorkers)
+	results := make(chan *rss, numWorkers)
+	done := make(chan struct{}, numConsumers)
 
-	// Запускаем пул воркеров
+	// Start worker pool
 	for i := 0; i < numWorkers; i++ {
 		go c.worker(jobs, results)
 	}
 
-	// Запускаем пул консьюмеров
+	// Start consumer pool
 	for i := 0; i < numConsumers; i++ {
 		go c.consumer(results, done)
 	}
