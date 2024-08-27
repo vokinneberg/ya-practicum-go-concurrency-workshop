@@ -74,13 +74,17 @@ func (fs *Storage) GetFeeds() []Item {
 	defer fs.m.RUnlock()
 	result := make([]Item, 0, len(fs.feeds))
 	for _, feed := range fs.feeds {
-		if feed != nil {
-			result = append(result, feed...)
-		}
+		result = append(result, feed...)
 	}
 	sort.Slice(result, func(i, j int) bool {
-		timeI, _ := time.Parse(time.RFC3339, result[i].Published)
-		timeJ, _ := time.Parse(time.RFC3339, result[j].Published)
+		timeI, err := time.Parse(time.RFC3339, result[i].Published)
+		if err != nil {
+			return false
+		}
+		timeJ, err := time.Parse(time.RFC3339, result[j].Published)
+		if err != nil {
+			return false
+		}
 		return timeI.After(timeJ)
 	})
 	return result

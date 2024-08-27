@@ -97,7 +97,10 @@ func (c *Crawler) worker(ctx context.Context, jobs <-chan string, results chan<-
 
 func (c *Crawler) producer(ctx context.Context, jobs chan<- string) error {
 	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
+	defer func() {
+		ticker.Stop()
+		close(jobs)
+	}()
 
 	for {
 		select {
