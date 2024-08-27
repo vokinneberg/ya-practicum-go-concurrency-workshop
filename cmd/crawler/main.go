@@ -17,6 +17,8 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
 	"golang.org/x/sync/errgroup"
+
+	_ "net/http/pprof"
 )
 
 var rssFeedList = []string{
@@ -28,7 +30,7 @@ var rssFeedList = []string{
 }
 
 func main() {
-	// Create feed storage
+	// Создание хранилища ленты
 	fs := feed.NewFeedStorage(rssFeedList)
 
 	// Create a new resty http client
@@ -49,7 +51,7 @@ func main() {
 	// Start the crawler
 	g.Go(func() error {
 		if err := c.Start(ctx, 5, 3); err != nil {
-			return fmt.Errorf("failed to start crawler: %w", err)
+			return fmt.Errorf("failed to run crawler: %w", err)
 		}
 		return nil
 	})
@@ -64,12 +66,18 @@ func main() {
 		Handler: mux,
 	}
 
+	// Start the web server
 	g.Go(func() error {
 		if err := srv.ListenAndServe(); err != nil {
 			return fmt.Errorf("failed to start web server: %w", err)
 		}
 		return nil
 	})
+
+	// Start pprof server
+	go func() {
+		log.Println(http.ListenAndServe("localhost:6060", nil))
+	}()
 
 	// Handle shutdown
 	sigChan := make(chan os.Signal, 1)

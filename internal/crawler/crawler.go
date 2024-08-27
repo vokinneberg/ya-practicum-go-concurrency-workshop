@@ -11,6 +11,7 @@ import (
 	"github.com/go-resty/resty/v2"
 	"github.com/mmcdole/gofeed"
 	"golang.org/x/sync/errgroup"
+	"golang.org/x/time/rate"
 )
 
 type rss struct {
@@ -96,7 +97,7 @@ func (c *Crawler) worker(ctx context.Context, jobs <-chan string, results chan<-
 }
 
 func (c *Crawler) producer(ctx context.Context, jobs chan<- string) error {
-	ticker := time.NewTicker(5 * time.Second)
+	ticker := time.NewTicker(30 * time.Second)
 	defer func() {
 		ticker.Stop()
 		close(jobs)
@@ -107,9 +108,12 @@ func (c *Crawler) producer(ctx context.Context, jobs chan<- string) error {
 		case <-ctx.Done():
 			return fmt.Errorf("context cancelled %w", ctx.Err())
 		case <-ticker.C:
+			limiter := rate.NewLimiter(1, 1)
 			links := c.feeds.GetLinks()
 			for _, link := range links {
-				jobs <- link
+				if err := limiter.Wait(ctx); err == nil {
+					jobs <- link
+				}
 			}
 		}
 	}
